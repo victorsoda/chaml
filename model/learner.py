@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import paddle.nn.functional as F
 import torch.nn.init as init
 import pickle
 import numpy as np
@@ -24,7 +24,8 @@ class Learner(nn.Module):
         self.with_cont_feat = self.config['with_cont_feat']
 
         # this dict contains all tensors needed to be optimized
-        self.vars = nn.ParameterList()
+        # self.vars = nn.ParameterList()
+        self.vars = list()
 
         # embedding modules
         self.init_emb(1, poiid_dim)  # poi_id_embedding
@@ -119,27 +120,27 @@ class Learner(nn.Module):
                 candi_feat.append((batch_candi[:, 4].unsqueeze(-1).float() - mean_dtime) / std_dtime)
 
             hist_embed = torch.cat([
-                F.embedding(input=batch_hist[:, :, 0], weight=poi_emb_w, padding_idx=0),
-                F.embedding(input=batch_hist[:, :, 1], weight=poi_type_emb_w, padding_idx=0),
-                F.embedding(input=batch_hist[:, :, 2], weight=time_emb_w),
+                F.embedding(x=batch_hist[:, :, 0], weight=poi_emb_w, padding_idx=0),
+                F.embedding(x=batch_hist[:, :, 1], weight=poi_type_emb_w, padding_idx=0),
+                F.embedding(x=batch_hist[:, :, 2], weight=time_emb_w),
                 torch.cat(hist_feat, dim=-1)
             ], dim=-1)
             candi_embed = torch.cat([
-                F.embedding(input=batch_candi[:, 0], weight=poi_emb_w, padding_idx=0),
-                F.embedding(input=batch_candi[:, 1], weight=poi_type_emb_w, padding_idx=0),
-                F.embedding(input=batch_candi[:, 2], weight=time_emb_w),
+                F.embedding(x=batch_candi[:, 0], weight=poi_emb_w, padding_idx=0),
+                F.embedding(x=batch_candi[:, 1], weight=poi_type_emb_w, padding_idx=0),
+                F.embedding(x=batch_candi[:, 2], weight=time_emb_w),
                 torch.cat(candi_feat, dim=-1)
             ], dim=-1)
         else:
             hist_embed = torch.cat([
-                F.embedding(input=batch_hist[:, :, 0], weight=poi_emb_w, padding_idx=0),
-                F.embedding(input=batch_hist[:, :, 1], weight=poi_type_emb_w, padding_idx=0),
-                F.embedding(input=batch_hist[:, :, 2], weight=time_emb_w),
+                F.embedding(x=batch_hist[:, :, 0], weight=poi_emb_w, padding_idx=0),
+                F.embedding(x=batch_hist[:, :, 1], weight=poi_type_emb_w, padding_idx=0),
+                F.embedding(x=batch_hist[:, :, 2], weight=time_emb_w),
             ], dim=-1)
             candi_embed = torch.cat([
-                F.embedding(input=batch_candi[:, 0], weight=poi_emb_w, padding_idx=0),
-                F.embedding(input=batch_candi[:, 1], weight=poi_type_emb_w, padding_idx=0),
-                F.embedding(input=batch_candi[:, 2], weight=time_emb_w),
+                F.embedding(x=batch_candi[:, 0], weight=poi_emb_w, padding_idx=0),
+                F.embedding(x=batch_candi[:, 1], weight=poi_type_emb_w, padding_idx=0),
+                F.embedding(x=batch_candi[:, 2], weight=time_emb_w),
             ], dim=-1)
         mask = (batch_hist[:, :, 0] == 0)            
 

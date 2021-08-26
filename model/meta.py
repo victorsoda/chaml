@@ -2,9 +2,9 @@ import  torch
 from    torch import nn
 from    torch import optim
 from    torch.nn import functional as F
-from    torch.utils.data import TensorDataset, DataLoader
 from    torch import optim
 import  numpy as np
+import paddle
 
 try:
     from    learner import Learner
@@ -88,7 +88,7 @@ class Meta(nn.Module):
                 loss_q = F.cross_entropy(logits_q, y_qry[i])
                 losses_q[0] += loss_q
                 pred_q = F.softmax(logits_q, dim=-1).argmax(dim=-1)
-                correct = torch.eq(pred_q, y_qry[i]).sum().item()
+                correct = paddle.equal(pred_q, y_qry[i]).numpy().sum()
                 corrects[0] = corrects[0] + correct
 
             # this is the loss and accuracy after the first update
@@ -97,10 +97,10 @@ class Meta(nn.Module):
             losses_q[1] += loss_q
             with torch.no_grad():
                 pred_q = F.softmax(logits_q, dim=-1).argmax(dim=-1)
-                correct = torch.eq(pred_q, y_qry[i]).sum().item()
+                correct = paddle.equal(pred_q, y_qry[i]).numpy().sum()
                 corrects[1] = corrects[1] + correct
                 if self.update_step == 1:
-                    task_sample_level_corrects[i] = torch.eq(pred_q, y_qry[i]).data.detach().cpu().numpy().tolist()
+                    task_sample_level_corrects[i] = paddle.equal(pred_q, y_qry[i]).numpy().tolist()
                     task_level_acc[i] = correct
                     
             # run the i-th task and compute loss for k=1~K-1
@@ -117,10 +117,10 @@ class Meta(nn.Module):
             
                 with torch.no_grad():
                     pred_q = F.softmax(logits_q, dim=-1).argmax(dim=-1)
-                    correct = torch.eq(pred_q, y_qry[i]).sum().item()  # convert to numpy
+                    correct = paddle.equal(pred_q, y_qry[i]).sum().item()  # convert to numpy
                     corrects[k + 1] = corrects[k + 1] + correct
                     if k == self.update_step - 1:
-                        task_sample_level_corrects[i] = torch.eq(pred_q, y_qry[i]).data.detach().cpu().numpy().tolist()
+                        task_sample_level_corrects[i] = paddle.equal(pred_q, y_qry[i]).numpy().tolist()
                         task_level_acc[i] = correct
         
         # end of all tasks, sum over all losses on query set across all tasks

@@ -1,7 +1,6 @@
 import numpy as np
 import os
 import pickle
-import torch
 import paddle
 import copy
 import random
