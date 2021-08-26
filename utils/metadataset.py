@@ -2,7 +2,7 @@ import numpy as np
 import os
 import pickle
 import torch
-from torch.utils.data import Dataset
+import paddle
 import copy
 import random
 import math
@@ -20,10 +20,14 @@ def samples_to_input(samples):
         x_hist.append(samples[i][1])
         x_candi.append(samples[i][2])
         y.append(samples[i][3])
-    x_uid = torch.LongTensor(np.array(x_uid))
-    x_hist = torch.LongTensor(np.array(x_hist))
-    x_candi = torch.LongTensor(np.array(x_candi))
-    y = torch.LongTensor(np.array(y))
+    # x_uid = torch.LongTensor(np.array(x_uid))
+    # x_hist = torch.LongTensor(np.array(x_hist))
+    # x_candi = torch.LongTensor(np.array(x_candi))
+    # y = torch.LongTensor(np.array(y))
+    x_uid = paddle.to_tensor(np.array(x_uid), dtype='int64')
+    x_hist = paddle.to_tensor(np.array(x_hist), dtype='int64')
+    x_candi = paddle.to_tensor(np.array(x_candi), dtype='int64')
+    y = paddle.to_tensor(np.array(y), dtype='int64')
     x = [x_uid, x_hist, x_candi]
     return x, y
 
