@@ -85,8 +85,9 @@ def get_task_poiid_embs(id_emb_path, cities):
     for idx in range(len(cities)):
         poiid_emb_file = '{}{}_poiid_embed.npy'.format(id_emb_path, cities[idx]
             )
-        poiid_emb = torch.from_numpy(np.load(poiid_emb_file).astype(np.float32)
-            )
+        # poiid_emb = torch.from_numpy(np.load(poiid_emb_file).astype(np.float32)
+        #     )
+        poiid_emb = paddle.to_tensor(np.load(poiid_emb_file).astype(np.float32))
         task_poiid_embs.append(poiid_emb)
     return task_poiid_embs
 

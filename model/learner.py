@@ -18,7 +18,7 @@ class Learner(nn.Layer):
         poiid_dim = self.config['poiid_dim']
         mlp_hidden = self.config['mlp_hidden']
         self.with_cont_feat = self.config['with_cont_feat']
-        self.vars = list()
+        self.vars = nn.ParameterList()
         self.init_emb(1, poiid_dim)
         self.init_emb(p_type_size, embed_dim)
         self.init_emb(time_size, embed_dim)
@@ -32,7 +32,7 @@ class Learner(nn.Layer):
         self.init_fc(mlp_hidden, mlp_hidden)
         self.init_fc(mlp_hidden, 2)
         for i in range(self.config['global_fix_var']):
-            self.vars[i].requires_grad = False
+            self.vars[i].trainable = False
 
     def init_emb(self, max_size, embed_dim):
         w = paddle.create_parameter(shape=paddle.ones([max_size, embed_dim]
@@ -51,10 +51,10 @@ class Learner(nn.Layer):
             default_initializer=paddle.nn.initializer.Assign(paddle.ones([
             output_dim, input_dim]).requires_grad_(False)))
         w.stop_gradient = False
-        b = paddle.create_parameter(shape=paddle.zeros(output_dim).
-            requires_grad_(False).shape, dtype=str(paddle.zeros(output_dim)
+        b = paddle.create_parameter(shape=paddle.zeros([output_dim]).
+            requires_grad_(False).shape, dtype=str(paddle.zeros([output_dim])
             .requires_grad_(False).numpy().dtype), default_initializer=\
-            paddle.nn.initializer.Assign(paddle.zeros(output_dim).
+            paddle.nn.initializer.Assign(paddle.zeros([output_dim]).
             requires_grad_(False)))
         b.stop_gradient = False
         init.xavier_uniform_(w)
@@ -90,9 +90,9 @@ class Learner(nn.Layer):
         """
         if vars is None:
             vars = self.vars
-        poi_emb_w, poi_type_emb_w, time_emb_w = vars[:3]
-        att_w1, att_b1, att_w2, att_b2 = vars[3:7]
-        mlp_w1, mlp_b1, mlp_w2, mlp_b2, mlp_w3, mlp_b3 = vars[7:]
+        poi_emb_w, poi_type_emb_w, time_emb_w = vars[0], vars[1], vars[2]
+        att_w1, att_b1, att_w2, att_b2 = vars[3], vars[4], vars[5], vars[6]
+        mlp_w1, mlp_b1, mlp_w2, mlp_b2, mlp_w3, mlp_b3 = vars[7], vars[8], vars[9], vars[10], vars[11], vars[12]
         if self.with_cont_feat and scaler is not None:
             hist_feat = []
             candi_feat = []

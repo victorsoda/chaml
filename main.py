@@ -97,12 +97,12 @@ def get_model(meta_path, config, model_name='Mymodel', load_model_file=None,
 
 
 def get_optimizer(meta_model, config):
-    init_parameters = list(filter(lambda p: p.requires_grad, meta_model.net
+    init_parameters = list(filter(lambda p: p.trainable, meta_model.net
         .parameters()))
-    parameters = [{'params': init_parameters, 'lr': config['meta_lr']}]
+    parameters = init_parameters
     optimizer = paddle.optimizer.Adam(parameters=parameters, learning_rate=\
         config['meta_lr'])
-    scheduler = paddle.optimizer.lr.ReduceLROnPlateau(learning_rate=config[
+    scheduler = paddle.optimizer.lr.ReduceOnPlateau(learning_rate=config[
         'meta_lr'], mode='max', factor=0.2, patience=PATIENCE, verbose=True,
         min_lr=1e-06)
     return optimizer, scheduler
@@ -228,7 +228,7 @@ def main_meta(meta_path, root_path, id_emb_path, model_name='Meta'):
     meta_model, model = get_model(meta_path, config, model_name)
     optimizer, scheduler = get_optimizer(meta_model, config)
     device = 'cuda'
-    device = device.replace('cuda', 'gpu')
+    device = device.replace('cuda', 'cpu')
     device = paddle.set_device(device)
     meta_model = meta_model.to(device)
     if model is not None:
