@@ -119,10 +119,6 @@ class Meta(nn.Layer):
                             y_qry[i]).numpy().tolist()
                         task_level_acc[i] = correct
         loss_q_final = losses_q[-1] / task_num
-        # print(type(loss_q))
-
-        # exit(2)
-
         accs = np.array(corrects) / (querysz * task_num)
         task_level_acc = np.array(task_level_acc) / querysz
         results = {'task_level_acc': task_level_acc,
@@ -191,10 +187,10 @@ class Meta(nn.Layer):
             return fast_weights
         logits = net(x_uid_spt, x_hist_spt, x_candi_spt, scaler=scaler)
         loss = F.cross_entropy(logits, y_spt)
-        grad = paddle.grad(loss, net.parameters())
+        grad = paddle.grad(loss, list(net.parameters()))
         fast_weights = list(net.parameters())[:self.LOCAL_FIX_VAR] + list(map
             (lambda p: p[1] - self.update_lr * p[0], zip(grad[self.
-            LOCAL_FIX_VAR:], net.parameters()[self.LOCAL_FIX_VAR:])))
+            LOCAL_FIX_VAR:], list(net.parameters())[self.LOCAL_FIX_VAR:])))
         for k in range(1, self.update_step_test):
             logits = net(x_uid_spt, x_hist_spt, x_candi_spt, fast_weights,
                 scaler=scaler)
@@ -216,6 +212,7 @@ class Meta(nn.Layer):
         with paddle.no_grad():
             pred_q = F.softmax(logits_q, axis=-1).argmax(axis=-1)
             y_pred.extend(pred_q.data.detach().cpu().numpy().tolist())
-            y_pred_prob.extend(logits_q.softmax(dim=-1)[:, 1].data.detach()
-                .cpu().numpy().tolist())
+            # y_pred_prob.extend(logits_q.softmax(dim=-1)[:, 1].data.detach()
+            #     .cpu().numpy().tolist())
+            y_pred_prob.extend(F.softmax(logits_q, axis=-1)[:, 1].numpy().tolist())
         return y_pred, y_pred_prob

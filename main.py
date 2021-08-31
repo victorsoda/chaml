@@ -306,7 +306,8 @@ def main_meta(meta_path, root_path, id_emb_path, model_name='Meta'):
                 best_scores = valid_tot_score
                 dict_save_path = os.path.join(meta_path + 'model_save/', 
                     str(batch_id + 1) + '.dict')
-                paddle.save(filter_statedict(meta_model), dict_save_path)
+                # paddle.save(filter_statedict(meta_model), dict_save_path)
+                paddle.save(meta_model.state_dict(), dict_save_path)
                 logger.info('Best metrics: {}! Save model to {}'.format(
                     valid_tot_score, dict_save_path))
             scheduler.step(valid_tot_score)
@@ -337,8 +338,8 @@ if __name__ == '__main__':
         STAGE_NUM = 2
     else:
         STAGE_NUM = 1
-    PER_TRAIN_LOG = 100 // STAGE_NUM
-    PER_TEST_LOG = 5000 // STAGE_NUM
+    PER_TRAIN_LOG = 6 // STAGE_NUM
+    PER_TEST_LOG = 12 // STAGE_NUM
     PATIENCE = 2
     INIT_COMPARE = False
     logger.info(
