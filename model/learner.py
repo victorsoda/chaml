@@ -45,11 +45,11 @@ class Learner(nn.Layer):
         self.vars.append(w)
 
     def init_fc(self, input_dim, output_dim):
-        w = paddle.create_parameter(shape=paddle.ones([output_dim,
-            input_dim]).requires_grad_(False).shape, dtype=str(paddle.ones(
-            [output_dim, input_dim]).requires_grad_(False).numpy().dtype),
+        w = paddle.create_parameter(shape=paddle.ones([input_dim,
+            output_dim]).requires_grad_(False).shape, dtype=str(paddle.ones(
+            [input_dim, output_dim]).requires_grad_(False).numpy().dtype),
             default_initializer=paddle.nn.initializer.Assign(paddle.ones([
-            output_dim, input_dim]).requires_grad_(False)))
+            input_dim, output_dim]).requires_grad_(False)))
         w.stop_gradient = False
         b = paddle.create_parameter(shape=paddle.zeros([output_dim]).
             requires_grad_(False).shape, dtype=str(paddle.zeros([output_dim])
@@ -67,15 +67,19 @@ class Learner(nn.Layer):
         :param V: (batch_size, hist_len, d)
         :return: (batch_size, d)
         """
-        K = K.unsqueeze(dim=1).expand(V.size())
+        K = paddle.expand(K.unsqueeze(axis=1), shape=V.size())
         fusion = torch2paddle.concat([K, V, K - V, K * V], dim=-1)
         x = F.linear(fusion, att_w1, att_b1)
         x = F.relu(x)
         score = F.linear(x, att_w2, att_b2)
         if mask is not None:
-            mask = mask.unsqueeze(dim=-1)
-            score = score.masked_fill(mask, -2 ** 32 + 1)
-        alpha = F.softmax(score, dim=1)
+            mask = mask.unsqueeze(axis=-1)
+            # score = score*mask
+            wall = paddle.ones_like(score) * (-2 ** 32 + 1)
+            score = paddle.where(mask==1, wall, score)
+            # score = score.masked_fill(mask, -2 ** 32 + 1)
+            
+        alpha = F.softmax(score, axis=1)
         alpha = F.dropout(alpha, p=0.5)
         att = (alpha * V).sum(dim=1)
         return att

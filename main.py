@@ -212,6 +212,7 @@ def one_meta_training_step(task_gen, meta_model, optimizer, device,
     accs, loss_q, results = meta_model(x_spt, y_spt, x_qry, y_qry,
         poiid_embs=poiid_embs, cont_feat_scalers=cont_feat_scalers)
     optimizer.clear_grad()
+    loss_q.stop_gradient = True
     loss_q.backward()
     torch2paddle.clip_grad_value_(parameters, 0.25)
     optimizer.step()

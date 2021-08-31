@@ -71,17 +71,19 @@ class Meta(nn.Layer):
             logits = self.net(x_uid_spt[i], x_hist_spt[i], x_candi_spt[i],
                 vars=None, scaler=scaler)
             loss = F.cross_entropy(logits, y_spt[i])
-            grad = paddle.grad(loss, self.net.parameters())
-            fast_weights = list(self.net.parameters())[:self.LOCAL_FIX_VAR
-                ] + list(map(lambda p: p[1] - self.update_lr * p[0], zip(
-                grad[self.LOCAL_FIX_VAR:], self.net.parameters()[self.
+            
+            grad = paddle.grad(loss, list(self.net.parameters()))
+            fast_weights = list(self.net.parameters())[:self.LOCAL_FIX_VAR] + \
+                list(map(lambda p: p[1] - self.update_lr * p[0], zip(
+                grad[self.LOCAL_FIX_VAR:], list(self.net.parameters())[self.
                 LOCAL_FIX_VAR:])))
+
             with paddle.no_grad():
                 logits_q = self.net(x_uid_qry[i], x_hist_qry[i],
                     x_candi_qry[i], self.net.parameters(), scaler=scaler)
                 loss_q = F.cross_entropy(logits_q, y_qry[i])
                 losses_q[0] += loss_q
-                pred_q = F.softmax(logits_q, axis=-1).argmax(dim=-1)
+                pred_q = F.softmax(logits_q, axis=-1).argmax(axis=-1)
                 correct = paddle.equal(pred_q, y_qry[i]).numpy().sum()
                 corrects[0] = corrects[0] + correct
             logits_q = self.net(x_uid_qry[i], x_hist_qry[i], x_candi_qry[i],
@@ -89,7 +91,7 @@ class Meta(nn.Layer):
             loss_q = F.cross_entropy(logits_q, y_qry[i])
             losses_q[1] += loss_q
             with paddle.no_grad():
-                pred_q = F.softmax(logits_q, axis=-1).argmax(dim=-1)
+                pred_q = F.softmax(logits_q, axis=-1).argmax(axis=-1)
                 correct = paddle.equal(pred_q, y_qry[i]).numpy().sum()
                 corrects[1] = corrects[1] + correct
                 if self.update_step == 1:
@@ -109,19 +111,23 @@ class Meta(nn.Layer):
                 loss_q = F.cross_entropy(logits_q, y_qry[i])
                 losses_q[k + 1] += loss_q
                 with paddle.no_grad():
-                    pred_q = F.softmax(logits_q, axis=-1).argmax(dim=-1)
+                    pred_q = F.softmax(logits_q, axis=-1).argmax(axis=-1)
                     correct = paddle.equal(pred_q, y_qry[i]).sum().item()
                     corrects[k + 1] = corrects[k + 1] + correct
                     if k == self.update_step - 1:
                         task_sample_level_corrects[i] = paddle.equal(pred_q,
                             y_qry[i]).numpy().tolist()
                         task_level_acc[i] = correct
-        loss_q = losses_q[-1] / task_num
+        loss_q_final = losses_q[-1] / task_num
+        # print(type(loss_q))
+
+        # exit(2)
+
         accs = np.array(corrects) / (querysz * task_num)
         task_level_acc = np.array(task_level_acc) / querysz
         results = {'task_level_acc': task_level_acc,
             'task_sample_level_corrects': task_sample_level_corrects}
-        return accs, loss_q, results
+        return accs, loss_q_final, results
 
     def finetuning(self, x_spt, y_spt, x_qry, y_qry, poiid_emb, scaler=None,
         meta_feature=None):
@@ -144,7 +150,7 @@ class Meta(nn.Layer):
             logits_q = net(x_uid_qry, x_hist_qry, x_candi_qry, fast_weights,
                 scaler=scaler)
             with paddle.no_grad():
-                pred_q = F.softmax(logits_q, axis=-1).argmax(dim=-1)
+                pred_q = F.softmax(logits_q, axis=-1).argmax(axis=-1)
                 y_pred.extend(pred_q.data.detach().cpu().numpy().tolist())
                 y_pred_prob.extend(logits_q.softmax(dim=-1)[:, 1].data.
                     detach().cpu().numpy().tolist())
@@ -161,7 +167,7 @@ class Meta(nn.Layer):
                 logits_q = net(x_uid_qry, x_hist_qry, x_candi_qry, fast_weights
                     )
                 with paddle.no_grad():
-                    pred_q = F.softmax(logits_q, axis=-1).argmax(dim=-1)
+                    pred_q = F.softmax(logits_q, axis=-1).argmax(axis=-1)
                     if k == self.update_step_test - 1:
                         y_pred.extend(pred_q.data.detach().cpu().numpy().
                             tolist())
@@ -208,7 +214,7 @@ class Meta(nn.Layer):
         logits_q = self.net(x_uid_qry, x_hist_qry, x_candi_qry,
             fast_weights, scaler=scaler)
         with paddle.no_grad():
-            pred_q = F.softmax(logits_q, axis=-1).argmax(dim=-1)
+            pred_q = F.softmax(logits_q, axis=-1).argmax(axis=-1)
             y_pred.extend(pred_q.data.detach().cpu().numpy().tolist())
             y_pred_prob.extend(logits_q.softmax(dim=-1)[:, 1].data.detach()
                 .cpu().numpy().tolist())
