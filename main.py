@@ -1,4 +1,5 @@
 from x2paddle import torch2paddle
+from copy import deepcopy
 import argparse
 import math
 import os
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 ARG = argparse.ArgumentParser()
 parser = ARG
 ARG = parser.parse_args()
-root_path = './data/'
+root_path = './data2/'
 meta_path = root_path + 'dataset/final/'
 
 
@@ -212,8 +213,7 @@ def one_meta_training_step(task_gen, meta_model, optimizer, device,
     accs, loss_q, results = meta_model(x_spt, y_spt, x_qry, y_qry,
         poiid_embs=poiid_embs, cont_feat_scalers=cont_feat_scalers)
     optimizer.clear_grad()
-    loss_q.stop_gradient = True
-    loss_q.backward()
+    loss_q.backward(retain_graph=True)
     torch2paddle.clip_grad_value_(parameters, 0.25)
     optimizer.step()
     task_idx2results = update_hardness(task_idxs, task_sample_sub2user, results
@@ -338,8 +338,8 @@ if __name__ == '__main__':
         STAGE_NUM = 2
     else:
         STAGE_NUM = 1
-    PER_TRAIN_LOG = 6 // STAGE_NUM
-    PER_TEST_LOG = 12 // STAGE_NUM
+    PER_TRAIN_LOG = 100 // STAGE_NUM
+    PER_TEST_LOG = 1000 // STAGE_NUM
     PATIENCE = 2
     INIT_COMPARE = False
     logger.info(

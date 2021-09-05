@@ -74,11 +74,8 @@ class Learner(nn.Layer):
         score = F.linear(x, att_w2, att_b2)
         if mask is not None:
             mask = mask.unsqueeze(axis=-1)
-            # score = score*mask
             wall = paddle.ones_like(score) * (-2 ** 32 + 1)
             score = paddle.where(mask==1, wall, score)
-            # score = score.masked_fill(mask, -2 ** 32 + 1)
-            
         alpha = F.softmax(score, axis=1)
         alpha = F.dropout(alpha, p=0.5)
         att = (alpha * V).sum(dim=1)
