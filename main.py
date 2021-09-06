@@ -58,6 +58,11 @@ def get_curriculum(root_path):
         3. rank the cities from easiest to hardest according to the scores and save the ranked city indices 
             as a numpy array to "base_task_hardness.pkl". E.g., [4, 2, 1, 0, 5, 3, 7, 6].
     """
+    # config_path = root_path + "config/"
+    # config_file = config_path + "base_task_hardness.pkl"
+    # curriculum = pickle.load(open(config_file, 'rb'))
+    # ret = list(curriculum)
+    # return ret
     mtrain_city_num = len(get_cities(root_path, 'base'))
     return list(np.arange(mtrain_city_num))
 
@@ -80,6 +85,7 @@ def get_config(json_file, pkl_path=None):
 
 def get_model(meta_path, config, model_name='Mymodel', load_model_file=None,
     poiid_emb_file=None):
+    # update some paths to config
     model_save_path = meta_path + 'model_save/'
     loss_save_path = meta_path + 'loss_save/'
     if not os.path.exists(model_save_path):
@@ -91,6 +97,7 @@ def get_model(meta_path, config, model_name='Mymodel', load_model_file=None,
         model_name)
     if not SCRATCH_ID_EMB:
         config['poiid_emb_file'] = poiid_emb_file
+    # create model
     if model_name == 'Meta':
         model = None
         meta_model = Meta(config)
@@ -131,11 +138,11 @@ def task_to_device(x_spt, y_spt, x_qry, y_qry, poiid_embs, device):
 def evaluate(data_loader, meta_model, metric, device, model=None,
     init_compare=False, silence=False):
     task_scores = []
-    task_score_weights = []
+    task_score_weights = []  # the weight of each task in the final evaluation scores (according to the amount of query users)
     if not silence:
         print('\t'.join(['Hits@5', 'Hits@10', 'NDCG@5', 'NDCG@10', 'city']))
-    for data in data_loader:
-        x_spt, y_spt, task_iterator, poiid_emb, city_name, scaler = data
+    for data in data_loader:  # evaluate on one meta-test city (task) each time
+        x_spt, y_spt, task_iterator, poiid_emb, city_name, scaler = data  # one meta-test task
         for i in range(len(x_spt)):
             x_spt[i] = x_spt[i].to(device)
         y_spt = y_spt.to(device)
@@ -218,14 +225,18 @@ def one_meta_training_step(task_gen, meta_model, optimizer, device,
     optimizer.step()
     task_idx2results = update_hardness(task_idxs, task_sample_sub2user, results
         )
+    # accs,loss_q.item() are for logging during training, task_idx2results supports the next meta training step
     return accs, loss_q.item(), task_idx2results
 
 
 def main_meta(meta_path, root_path, id_emb_path, model_name='Meta'):
+    # read config file
     config_path = 'config/config-'
     model2config = {'Meta': '{}{}.json'.format(config_path, 'chaml')}
     config = get_config(model2config[model_name])
     print(config)
+
+    # get meta_model, optimizer, metrics
     meta_model, model = get_model(meta_path, config, model_name)
     optimizer, scheduler = get_optimizer(meta_model, config)
     device = 'cuda'
@@ -241,13 +252,21 @@ def main_meta(meta_path, root_path, id_emb_path, model_name='Meta'):
     print(meta_model)
     logger.info('Total trainable tensors: {}'.format(num))
     metric = Metrics()
-    mtrain_tasks = pickle.load(open(meta_path + 'mtrain_tasks.pkl', 'rb'))
+
+    # load the dataset
+    # a list, each element of the list is the data of a meta-training task (samples, candidates, user2items)
+    mtrain_tasks = pickle.load(open(meta_path + 'mtrain_tasks.pkl', 'rb')) 
+    # a list, each element of the list is the data of a meta-valid task(spt_samples, qry_samples, candidates, qry_user2items)
     mvalid_tasks = pickle.load(open(meta_path + 'mvalid_tasks.pkl', 'rb'))
     mtest_tasks = pickle.load(open(meta_path + 'mtest_tasks.pkl', 'rb'))
     logger.info('Loaded all the data pickles!')
+
+    # set variables for statistics
     best_scores = 0
     running_loss = 0
     batch_id = 0
+
+    # start training
     running_accs = np.zeros(config['update_step'] + 1)
     task_gen = TrainGenerator(root_path, meta_path, id_emb_path,
         mtrain_tasks, config['train_qry_batch_size'], config[
@@ -257,6 +276,7 @@ def main_meta(meta_path, root_path, id_emb_path, model_name='Meta'):
     task_idx2results = {'task_idx2acc': None, 'task_idx_to_user2acc': None}
     hard_task_counter = Counter()
     while True:
+        # >>>>> [Stage1] sample the hardest tasks of last round, and then sample more tasks. 
         accs, loss, task_idx2results = one_meta_training_step(task_gen,
             meta_model, optimizer, device, parameters, task_idx2results,
             'stage1', CURRICULUM, HARD_TASK, batch_id=batch_id)
@@ -265,6 +285,7 @@ def main_meta(meta_path, root_path, id_emb_path, model_name='Meta'):
         batch_id += 1
         hard_task_counter.update(list(task_idx2results['task_idx2acc'].keys()))
         if HARD_USER:
+            # >>>>> Stage2: the same tasks as Stage 1, keep the hardest users, and sample new users in these tasks.
             accs, loss, task_idx2results = one_meta_training_step(task_gen,
                 meta_model, optimizer, device, parameters, task_idx2results,
                 'stage2', CURRICULUM, HARD_TASK, batch_id=batch_id)
@@ -327,19 +348,21 @@ if __name__ == '__main__':
         print('Please check data/pkls/ ...')
         exit(2)
     poi_type2idx_path = poitype_pkl()
-    POIID_DIM = 50
-    WITH_CONT_FEAT = True
-    SCRATCH_ID_EMB = False
+    POIID_DIM = 50  # the dimension of poi id embedding, related to the preprocessed embedding files in id_emb_path
+    WITH_CONT_FEAT = True  # always True
+    SCRATCH_ID_EMB = False  # always False
+
+    # Settings for CHAML
     CURRICULUM = True
     HARD_TASK = True
     HARD_USER = True
-    PACING_FUNCTION = 'ssp'
+    PACING_FUNCTION = 'ssp'  # ssp: single step pacing
     if HARD_USER:
         STAGE_NUM = 2
     else:
         STAGE_NUM = 1
-    PER_TRAIN_LOG = 100 // STAGE_NUM
-    PER_TEST_LOG = 1000 // STAGE_NUM
+    PER_TRAIN_LOG = 2 // STAGE_NUM
+    PER_TEST_LOG = 10 // STAGE_NUM
     PATIENCE = 2
     INIT_COMPARE = False
     logger.info(

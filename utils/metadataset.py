@@ -119,10 +119,12 @@ class TrainGenerator:
         curriculum=True, hard_task=True, batch_id=0):
         task_idx2acc = task_idx2results['task_idx2acc']
         task_idx_to_user2acc = task_idx2results['task_idx_to_user2acc']
+
+        # 1. City-level curriculum decides the sampling pool of meta-training tasks.
         if curriculum:
             if self.pacing_function == 'ssp':
                 starting_percent = 0.5
-                step_length = self.max_steps // 2
+                step_length = self.max_steps // 2  # max_"steps": max iteration "steps"
                 if batch_id < step_length:
                     gi = int(starting_percent * self.task_num)
                 else:
@@ -132,12 +134,14 @@ class TrainGenerator:
             task_idx_pool = list(range(self.task_num))
         self.task_idx_pool = task_idx_pool
         self.last_batch_id = batch_id
-        if task_idx2acc is None:
+
+        # 2. Decide to sample which cities/tasks for this round.
+        if task_idx2acc is None:  # None: means it's the first iteration of meta-training, then we randomly sample tasks from the current city pool
             task_idxs = random.sample(task_idx_pool, k=self.task_batch_size)
-        elif stage == 'stage2':
+        elif stage == 'stage2':  # For Stage2, we keep the same group of cities (tasks), and sample new users
             task_idxs = list(task_idx2acc.keys())
-        elif hard_task:
-            hard_task_num = self.task_batch_size // 2
+        elif hard_task:  # [Flag][hard_task]: for the rest of meta-training iterations, if we adopt hard_task strategy, we try to sample harder cities
+            hard_task_num = self.task_batch_size // 2  # $k_c$ is 0.5, $B_c$ is self.task_batch_size.
             task_idxs = list(task_idx2acc.keys())[:hard_task_num]
             if len(task_idx_pool
                 ) - self.task_batch_size < self.task_batch_size - hard_task_num:
@@ -151,8 +155,10 @@ class TrainGenerator:
                 task_idxs.extend(other_task_idxs)
         else:
             task_idxs = random.sample(task_idx_pool, k=self.task_batch_size)
-        task_sample_sub2user = []
-        task_cont_feat_scalers = []
+
+        # 3. Decide the users of each city (to form support&query set samples).
+        task_sample_sub2user = []  # each task -> a list x, x[i] means the user id of the i-th sample
+        task_cont_feat_scalers = []  # each task -> a dict: {"dist": (mean, std), "dtime": (mean, std)}
         global x_uid_spts, x_hist_spts, x_candi_spts, y_spts, x_uid_qrys, x_hist_qrys, x_candi_qrys, y_qrys, poiid_embs
         init_yield_collectors()
         for idx in task_idxs:
@@ -160,10 +166,11 @@ class TrainGenerator:
                 qry_mean_stds, city_name) = self.mtrain_tasks[idx]
             task_cont_feat_scalers.append(qry_mean_stds)
             all_users = list(spt_user2samples.keys())
+            # [Flag][hard_user] if we adopt hard_user strategy 
             if (stage == 'stage2' and task_idx_to_user2acc is not None and 
                 idx in task_idx_to_user2acc):
                 user2acc = task_idx_to_user2acc[idx]
-                hard_user_num = self.few_user_num // 2
+                hard_user_num = self.few_user_num // 2  # $k_u$ is 0.5, $B_u$ is self.few_user_num.
                 selected_users = list(user2acc.keys())[:hard_user_num]
                 other_user_pool = list(set(all_users) - set(list(user2acc.
                     keys())))
@@ -172,25 +179,27 @@ class TrainGenerator:
                 selected_users.extend(other_users)
             else:
                 selected_users = random.sample(all_users, k=self.few_user_num)
+            # construct the support set samples of a meta-training task
             pos_spt_samples = []
             for user in selected_users:
                 pos_spt_samples.extend(spt_user2samples[user])
             pos_and_neg_spt_samples = pos_samples2pos_and_neg(pos_spt_samples,
                 candidates, user2itemset, self.negative_ratio)
             x_spt, y_spt = samples_to_input(pos_and_neg_spt_samples)
+            # construct the query set samples of a meta-training task
             qrysample_sub2user = []
             pos_qry_samples = []
             for user in selected_users:
                 qry_samples = qry_user2samples[user]
                 pos_qry_samples.extend(qry_samples)
                 qrysample_sub2user.extend([user] * len(qry_samples))
-            qrysample_sub2user = qrysample_sub2user + qrysample_sub2user
+            qrysample_sub2user = qrysample_sub2user + qrysample_sub2user  # all samples = [postive samples] + [negative samples], two lists have the same order of users.
             task_sample_sub2user.append(qrysample_sub2user)
             pos_and_neg_qry_samples = pos_samples2pos_and_neg(pos_qry_samples,
                 candidates, user2itemset, self.negative_ratio)
             x_qry, y_qry = samples_to_input(pos_and_neg_qry_samples)
             append_one_task(x_spt, y_spt, x_qry, y_qry, self.
-                task_poiid_embs[idx])
+                task_poiid_embs[idx])  # support, query samples: each have 128 * 2 samples
         return ([x_uid_spts, x_hist_spts, x_candi_spts], y_spts, [
             x_uid_qrys, x_hist_qrys, x_candi_qrys], y_qrys, poiid_embs
             ), task_idxs, task_sample_sub2user, task_cont_feat_scalers
@@ -198,6 +207,8 @@ class TrainGenerator:
 
 def evaluate_generator(root_path, id_emb_path, mtest_tasks, few_num,
     neg_num=100, is_test=False):
+
+    # mtest_tasks: a list，each element is the data of a meta-testing task (0 spt_samples, 1 qry_samples, 2 candidates, 3 spt_user2itemset, 4 qry_user2itemset, 5 city_name)
 
     def task_iterator(qry_user2samples, candidates, user2itemset,
         yield_batch_size, align_qry_samples=None):
@@ -215,8 +226,9 @@ def evaluate_generator(root_path, id_emb_path, mtest_tasks, few_num,
                     while neg_candi in user2itemset[user_id
                         ] or neg_candi in neg_candis:
                         neg_candi = random.choice(candidates)
-                    neg_candis.append(neg_candi)
+                    neg_candis.append(neg_candi)  # neg_candi is tuple (poiid, poitype)
                     poiid, poitype, poi_loc = neg_candi
+                    # candidate (poiid, poitype, timeid, u-pdist, dtime)
                     neg_candi = np.array([poiid, poitype, pos_candi[2],
                         cal_distance(poi_loc, user_loc), pos_candi[4]])
                     neg_qry_samples.append(np.array([user_id, hist,

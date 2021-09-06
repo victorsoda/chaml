@@ -97,7 +97,7 @@ class Learner(nn.Layer):
         if self.with_cont_feat and scaler is not None:
             hist_feat = []
             candi_feat = []
-            if 'dist' in scaler:
+            if 'dist' in scaler:  # datapoint[3:]: u-p dist, dtime, delta_dist
                 mean_dist, std_dist = scaler['dist']
                 mean_dtime, std_dtime = scaler['dtime']
                 try:

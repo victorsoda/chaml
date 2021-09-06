@@ -19,12 +19,12 @@ class Meta(nn.Layer):
 
     def __init__(self, config):
         super(Meta, self).__init__()
-        self.update_lr = config['update_lr']
-        self.meta_lr = config['meta_lr']
-        self.update_step = config['update_step']
-        self.update_step_test = config['update_step_test']
-        self.LOCAL_FIX_VAR = config['local_fix_var']
-        self.sample_batch_size = config['sample_batch_size']
+        self.update_lr = config['update_lr']  # task-level inner update learning rate
+        self.meta_lr = config['meta_lr']  # meta-level outer learning rate
+        self.update_step = config['update_step']  # task-level inner update steps
+        self.update_step_test = config['update_step_test']  # update steps for finetunning
+        self.LOCAL_FIX_VAR = config['local_fix_var']  # vars[0:LOCAL_FIX_VAR] should be fixed in the local update (fast_weights only update [LOCAL_FIX_VAR:])
+        self.sample_batch_size = config['sample_batch_size']  # batch size of samples to feed into Learner
         self.net = Learner(config)
 
     def clip_grad_by_norm_(self, grad, max_norm):
@@ -52,9 +52,9 @@ class Meta(nn.Layer):
         x_uid_spt, x_hist_spt, x_candi_spt = x_spt
         x_uid_qry, x_hist_qry, x_candi_qry = x_qry
         task_num = len(x_uid_spt)
-        querysz = len(x_uid_qry[0])
-        losses_q = [(0) for _ in range(self.update_step + 1)]
-        corrects = [(0) for _ in range(self.update_step + 1)]
+        querysz = len(x_uid_qry[0])  # number of qry set samples in one task
+        losses_q = [(0) for _ in range(self.update_step + 1)]  # losses_q[i] is the loss on step i
+        corrects = [(0) for _ in range(self.update_step + 1)]  # corrects[i] is the number of correctly-predicted qry samples on step i (for calculating acc)
         task_level_acc = [(0) for _ in range(task_num)]
         task_sample_level_corrects = [[] for _ in range(task_num)]
         for i in range(task_num):
@@ -62,12 +62,16 @@ class Meta(nn.Layer):
                 scaler = cont_feat_scalers[i]
             else:
                 scaler = None
+
+            # find the poi_emb_w of each task
             if poiid_embs is not None:
                 self.net.parameters()[0] = paddle.create_parameter(shape=\
                     poiid_embs[i].shape, dtype=str(poiid_embs[i].numpy().
                     dtype), default_initializer=paddle.nn.initializer.
                     Assign(poiid_embs[i]))
                 self.net.parameters()[0].stop_gradient = False
+            
+            # run the i-th task and compute training loss (on support) for k=0
             logits = self.net(x_uid_spt[i], x_hist_spt[i], x_candi_spt[i],
                 vars=None, scaler=scaler)
             loss = F.cross_entropy(logits, y_spt[i])
@@ -78,6 +82,7 @@ class Meta(nn.Layer):
                 grad[self.LOCAL_FIX_VAR:], list(self.net.parameters())[self.
                 LOCAL_FIX_VAR:])))
 
+            # this is the loss and accuracy before first update
             with paddle.no_grad():
                 logits_q = self.net(x_uid_qry[i], x_hist_qry[i],
                     x_candi_qry[i], self.net.parameters(), scaler=scaler)
@@ -86,6 +91,8 @@ class Meta(nn.Layer):
                 pred_q = F.softmax(logits_q, axis=-1).argmax(axis=-1)
                 correct = paddle.equal(pred_q, y_qry[i]).numpy().sum()
                 corrects[0] = corrects[0] + correct
+            
+            # this is the loss and accuracy after the first update
             logits_q = self.net(x_uid_qry[i], x_hist_qry[i], x_candi_qry[i],
                 fast_weights, scaler=scaler)
             loss_q = F.cross_entropy(logits_q, y_qry[i])
@@ -98,6 +105,8 @@ class Meta(nn.Layer):
                     task_sample_level_corrects[i] = paddle.equal(pred_q,
                         y_qry[i]).numpy().tolist()
                     task_level_acc[i] = correct
+            
+            # run the i-th task and compute loss for k=1~K-1
             for k in range(1, self.update_step):
                 logits = self.net(x_uid_spt[i], x_hist_spt[i], x_candi_spt[
                     i], fast_weights, scaler=scaler)
@@ -108,6 +117,7 @@ class Meta(nn.Layer):
                     self.LOCAL_FIX_VAR:], fast_weights[self.LOCAL_FIX_VAR:])))
                 logits_q = self.net(x_uid_qry[i], x_hist_qry[i],
                     x_candi_qry[i], fast_weights, scaler=scaler)
+                # loss_q will be overwritten and just keep the loss_q on last update step.
                 loss_q = F.cross_entropy(logits_q, y_qry[i])
                 losses_q[k + 1] += loss_q
                 with paddle.no_grad():
@@ -118,59 +128,14 @@ class Meta(nn.Layer):
                         task_sample_level_corrects[i] = paddle.equal(pred_q,
                             y_qry[i]).numpy().tolist()
                         task_level_acc[i] = correct
+        
+        # end of all tasks, sum over all losses on query set across all tasks
         loss_q_final = losses_q[-1] / task_num
         accs = np.array(corrects) / (querysz * task_num)
         task_level_acc = np.array(task_level_acc) / querysz
         results = {'task_level_acc': task_level_acc,
             'task_sample_level_corrects': task_sample_level_corrects}
         return accs, loss_q_final, results
-
-    def finetuning(self, x_spt, y_spt, x_qry, y_qry, poiid_emb, scaler=None,
-        meta_feature=None):
-        x_uid_spt, x_hist_spt, x_candi_spt = x_spt
-        x_uid_qry, x_hist_qry, x_candi_qry = x_qry
-        y_pred = []
-        y_pred_prob = []
-        net = deepcopy(self.net)
-        net.parameters()[0] = paddle.create_parameter(shape=poiid_emb.shape,
-            dtype=str(poiid_emb.numpy().dtype), default_initializer=paddle.
-            nn.initializer.Assign(poiid_emb))
-        net.parameters()[0].stop_gradient = False
-        logits = net(x_uid_spt, x_hist_spt, x_candi_spt, scaler=scaler)
-        loss = F.cross_entropy(logits, y_spt)
-        grad = paddle.grad(loss, net.parameters())
-        fast_weights = list(net.parameters())[:self.LOCAL_FIX_VAR] + list(map
-            (lambda p: p[1] - self.update_lr * p[0], zip(grad[self.
-            LOCAL_FIX_VAR:], net.parameters()[self.LOCAL_FIX_VAR:])))
-        if 0 == self.update_step_test - 1:
-            logits_q = net(x_uid_qry, x_hist_qry, x_candi_qry, fast_weights,
-                scaler=scaler)
-            with paddle.no_grad():
-                pred_q = F.softmax(logits_q, axis=-1).argmax(axis=-1)
-                y_pred.extend(pred_q.data.detach().cpu().numpy().tolist())
-                y_pred_prob.extend(logits_q.softmax(dim=-1)[:, 1].data.
-                    detach().cpu().numpy().tolist())
-        else:
-            for k in range(1, self.update_step_test):
-                logits = net(x_uid_spt, x_hist_spt, x_candi_spt,
-                    fast_weights, scaler=scaler)
-                loss = F.cross_entropy(logits, y_spt)
-                grad = paddle.grad(loss, fast_weights)
-                fast_weights = list(net.parameters())[:self.LOCAL_FIX_VAR
-                    ] + list(map(lambda p: p[1] - self.update_lr * p[0],
-                    zip(grad[self.LOCAL_FIX_VAR:], net.parameters()[self.
-                    LOCAL_FIX_VAR:])))
-                logits_q = net(x_uid_qry, x_hist_qry, x_candi_qry, fast_weights
-                    )
-                with paddle.no_grad():
-                    pred_q = F.softmax(logits_q, axis=-1).argmax(axis=-1)
-                    if k == self.update_step_test - 1:
-                        y_pred.extend(pred_q.data.detach().cpu().numpy().
-                            tolist())
-                        y_pred_prob.extend(logits_q.softmax(dim=-1)[:, 1].
-                            data.detach().cpu().numpy().tolist())
-        del net
-        return y_pred, y_pred_prob
 
     def finetuning_adapt(self, x_spt, y_spt, poiid_emb, scaler=None,
         meta_feature=None):

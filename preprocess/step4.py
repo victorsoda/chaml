@@ -18,8 +18,9 @@ class NullEmbedder(nn.Layer):
 
     def __init__(self, poi_size, embed_dim):
         super(NullEmbedder, self).__init__()
-        self.poi_embedding = nn.Embedding(poi_size, embed_dim, padding_idx=0)
-        init.xavier_uniform_(self.poi_embedding.weight)
+        self.poi_embedding = nn.Embedding(poi_size, embed_dim, padding_idx=0, weight_attr=paddle.ParamAttr(
+            initializer=paddle.nn.initializer.XavierUniform()))
+        # init.xavier_uniform_(self.poi_embedding.weight)
 
     def forward(self, save_file):
         w = self.poi_embedding.weight.detach().numpy()
