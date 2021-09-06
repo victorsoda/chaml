@@ -4,6 +4,15 @@ The codes for the paper: Curriculum Meta-Learning for Next POI Recommendation (K
 
 This repository is under construction.
 
+### Requirements
+
+```
+python 3.6
+paddlepaddle >= 2.0.0
+numpy >= 1.19.0
+x2paddle (please refer to https://github.com/PaddlePaddle/X2Paddle)
+```
+
 ### Run
 
 To run the codes, one should first put the map search data under the path `./data/dataset/`.
@@ -63,6 +72,8 @@ sh run_prep.sh
 sh run.sh
 # Although the meta-learner cannot learn anything from the fake data..
 ```
+
+Notice: there are still some warnings during running the codes, but it's just OK to run.
 
 
 

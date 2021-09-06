@@ -1,4 +1,4 @@
-from x2paddle import torch2paddle
+# from x2paddle import torch2paddle
 from copy import deepcopy
 import argparse
 import math
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 ARG = argparse.ArgumentParser()
 parser = ARG
 ARG = parser.parse_args()
-root_path = './data2/'
+root_path = './data/'
 meta_path = root_path + 'dataset/final/'
 
 
@@ -108,8 +108,9 @@ def get_optimizer(meta_model, config):
     init_parameters = list(filter(lambda p: p.trainable, meta_model.net
         .parameters()))
     parameters = init_parameters
+    clip = paddle.nn.ClipGradByValue(min=-0.25, max=0.25)
     optimizer = paddle.optimizer.Adam(parameters=parameters, learning_rate=\
-        config['meta_lr'])
+        config['meta_lr'], grad_clip=clip)
     scheduler = paddle.optimizer.lr.ReduceOnPlateau(learning_rate=config[
         'meta_lr'], mode='max', factor=0.2, patience=PATIENCE, verbose=True,
         min_lr=1e-06)
@@ -221,7 +222,7 @@ def one_meta_training_step(task_gen, meta_model, optimizer, device,
         poiid_embs=poiid_embs, cont_feat_scalers=cont_feat_scalers)
     optimizer.clear_grad()
     loss_q.backward(retain_graph=True)
-    torch2paddle.clip_grad_value_(parameters, 0.25)
+    # torch2paddle.clip_grad_value_(parameters, 0.25)
     optimizer.step()
     task_idx2results = update_hardness(task_idxs, task_sample_sub2user, results
         )
@@ -240,7 +241,7 @@ def main_meta(meta_path, root_path, id_emb_path, model_name='Meta'):
     meta_model, model = get_model(meta_path, config, model_name)
     optimizer, scheduler = get_optimizer(meta_model, config)
     device = 'cuda'
-    device = device.replace('cuda', 'cpu')
+    device = device.replace('cuda', 'cpu')   # TODO: you may delete this row to allow GPU
     device = paddle.set_device(device)
     meta_model = meta_model.to(device)
     if model is not None:
@@ -334,7 +335,7 @@ def main_meta(meta_path, root_path, id_emb_path, model_name='Meta'):
             scheduler.step(valid_tot_score)
             meta_model.train()
             print(hard_task_counter)
-            torch2paddle.invalid()
+            # torch2paddle.invalid()
 
 
 if __name__ == '__main__':
@@ -361,8 +362,8 @@ if __name__ == '__main__':
         STAGE_NUM = 2
     else:
         STAGE_NUM = 1
-    PER_TRAIN_LOG = 2 // STAGE_NUM
-    PER_TEST_LOG = 10 // STAGE_NUM
+    PER_TRAIN_LOG = 100 // STAGE_NUM
+    PER_TEST_LOG = 5000 // STAGE_NUM
     PATIENCE = 2
     INIT_COMPARE = False
     logger.info(

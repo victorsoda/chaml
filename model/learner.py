@@ -2,7 +2,6 @@ from x2paddle import torch2paddle
 import paddle
 import paddle.nn as nn
 import paddle.nn.functional as F
-import x2paddle.torch2paddle as init
 import pickle
 import numpy as np
 
@@ -38,18 +37,15 @@ class Learner(nn.Layer):
         w = paddle.create_parameter(shape=paddle.ones([max_size, embed_dim]
             ).requires_grad_(False).shape, dtype=str(paddle.ones([max_size,
             embed_dim]).requires_grad_(False).numpy().dtype),
-            default_initializer=paddle.nn.initializer.Assign(paddle.ones([
-            max_size, embed_dim]).requires_grad_(False)))
+            default_initializer=paddle.nn.initializer.XavierUniform())
         w.stop_gradient = False
-        init.xavier_uniform_(w)
         self.vars.append(w)
 
     def init_fc(self, input_dim, output_dim):
         w = paddle.create_parameter(shape=paddle.ones([input_dim,
             output_dim]).requires_grad_(False).shape, dtype=str(paddle.ones(
             [input_dim, output_dim]).requires_grad_(False).numpy().dtype),
-            default_initializer=paddle.nn.initializer.Assign(paddle.ones([
-            input_dim, output_dim]).requires_grad_(False)))
+            default_initializer=paddle.nn.initializer.XavierUniform())
         w.stop_gradient = False
         b = paddle.create_parameter(shape=paddle.zeros([output_dim]).
             requires_grad_(False).shape, dtype=str(paddle.zeros([output_dim])
@@ -57,7 +53,6 @@ class Learner(nn.Layer):
             paddle.nn.initializer.Assign(paddle.zeros([output_dim]).
             requires_grad_(False)))
         b.stop_gradient = False
-        init.xavier_uniform_(w)
         self.vars.append(w)
         self.vars.append(b)
 
@@ -68,7 +63,7 @@ class Learner(nn.Layer):
         :return: (batch_size, d)
         """
         K = paddle.expand(K.unsqueeze(axis=1), shape=V.size())
-        fusion = torch2paddle.concat([K, V, K - V, K * V], dim=-1)
+        fusion = paddle.concat([K, V, K - V, K * V], axis=-1)
         x = F.linear(fusion, att_w1, att_b1)
         x = F.relu(x)
         score = F.linear(x, att_w2, att_b2)
@@ -114,29 +109,29 @@ class Learner(nn.Layer):
                     mean_dist) / std_dist)
                 candi_feat.append((batch_candi[:, 4].unsqueeze(-1).float() -
                     mean_dtime) / std_dtime)
-            hist_embed = torch2paddle.concat([F.embedding(x=batch_hist[:, :,
+            hist_embed = paddle.concat([F.embedding(x=batch_hist[:, :,
                 0], weight=poi_emb_w, padding_idx=0), F.embedding(x=\
                 batch_hist[:, :, 1], weight=poi_type_emb_w, padding_idx=0),
                 F.embedding(x=batch_hist[:, :, 2], weight=time_emb_w),
-                torch2paddle.concat(hist_feat, dim=-1)], dim=-1)
-            candi_embed = torch2paddle.concat([F.embedding(x=batch_candi[:,
+                paddle.concat(hist_feat, axis=-1)], axis=-1)
+            candi_embed = paddle.concat([F.embedding(x=batch_candi[:,
                 0], weight=poi_emb_w, padding_idx=0), F.embedding(x=\
                 batch_candi[:, 1], weight=poi_type_emb_w, padding_idx=0), F
                 .embedding(x=batch_candi[:, 2], weight=time_emb_w),
-                torch2paddle.concat(candi_feat, dim=-1)], dim=-1)
+                paddle.concat(candi_feat, axis=-1)], axis=-1)
         else:
-            hist_embed = torch2paddle.concat([F.embedding(x=batch_hist[:, :,
+            hist_embed = paddle.concat([F.embedding(x=batch_hist[:, :,
                 0], weight=poi_emb_w, padding_idx=0), F.embedding(x=\
                 batch_hist[:, :, 1], weight=poi_type_emb_w, padding_idx=0),
-                F.embedding(x=batch_hist[:, :, 2], weight=time_emb_w)], dim=-1)
-            candi_embed = torch2paddle.concat([F.embedding(x=batch_candi[:,
+                F.embedding(x=batch_hist[:, :, 2], weight=time_emb_w)], axis=-1)
+            candi_embed = paddle.concat([F.embedding(x=batch_candi[:,
                 0], weight=poi_emb_w, padding_idx=0), F.embedding(x=\
                 batch_candi[:, 1], weight=poi_type_emb_w, padding_idx=0), F
-                .embedding(x=batch_candi[:, 2], weight=time_emb_w)], dim=-1)
+                .embedding(x=batch_candi[:, 2], weight=time_emb_w)], axis=-1)
         mask = batch_hist[:, :, 0] == 0
         hist = self.attention(att_w1, att_b1, att_w2, att_b2, candi_embed,
             hist_embed, mask)
-        embeds = torch2paddle.concat([hist, candi_embed], dim=-1)
+        embeds = paddle.concat([hist, candi_embed], axis=-1)
         embeds = F.dropout(embeds, p=0.5)
         fc1 = F.linear(embeds, mlp_w1, mlp_b1)
         fc1 = F.relu(fc1)
